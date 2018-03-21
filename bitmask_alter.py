@@ -21,7 +21,6 @@ logging.basicConfig(
 
 # BPM definitions
 # From imdetrend::mask_bits.h
-# Some of them doesn't makes sense, but read in context
 bpmdef = dict()
 bpmdef.update({'BPMDEF_FLAT_MIN' : 1})
 #Pixels that are hot in the flats.
@@ -66,7 +65,7 @@ def open_fits(fnm, ):
     if (len(data) == 0):
         logging.error('No extensions were found on {0}'.format(fnm))
         exit(1)
-    elif (len(data) == 1):
+    elif (len(data) >= 1):
         return data
 
 def open_txt(fnm, Nskip):
@@ -148,30 +147,29 @@ def bit_decompose(int_x):
         i <<= 1
     return base2
 
-def stack(bpm, box, useflag):
-    ''' Function to stack masks, deciding pixel-by-pixel if flag is duplicated
-    '''
-    # Use a mock CCD to apply the box mask
-    aux_ccd = np.zeros_like(bpm)
-    for [x1, y1, x2, y2] in box:
-        aux_ccd[y1:y2 , x1:x2] = bpmdef[useflag]
-    print('Continue here!')
-    # Maybe copy/paste this to joint_mask, if is better
-
-def joint_mask(bpm_msk, box_msk, flag='BPMDEF_SUSPECT'):
+def joint_mask(bpm_msk, box_msk,
+               non_masked_val=0,
+               flag='BPMDEF_SUSPECT'):
     ''' Applies the box-defined mask to the original BPM, avoiding replace
-    bits values. The flag need to have an entry in BPMDEF
+    bits values. The flag need to have an entry in BPMDEF.
+    To be used:
+    ['BPMDEF_SUSPECT', 'BPMDEF_NEAREDGE']
     '''
     for bpm in bpm_msk:
         #
         # Check the bits
         #
-        # Unique bits in the mask, can be raw 2**n or sum of them
-        aux_bit1 = np.unique(bpm_msk[0].ravel())
+        # Unique bits in the mask not considering the zeros
+        # Transform to tuple for protection
+        aux_bit1 = np.unique(bpm[np.where(bpm != non_masked_val)].ravel())
+        aux_bit1 = tuple(aux_bit1)
+        if (not len(aux_bit1)):
+            logging.warning('No masking was detected (values != 0)')
+            continue
         # Unique base-2 bits, obtained from decomposing the above
-        aux_bit2 = list(map(bit_decompose, aux_bit1))
-        aux_bit2_count = [len(x) for x in aux_bit2]
-        aux_bit2 = flatten_list(aux_bit2)
+        aux_bit2_decomp = tuple(map(bit_decompose, aux_bit1))
+        aux_bit2_count = [len(x) for x in aux_bit2_decomp]
+        aux_bit2 = flatten_list(aux_bit2_decomp)
         aux_bit2 = np.unique(aux_bit2)
         # Check if these bits are in the dictionary of BPMDEF
         aux_xm_key = [get_dict_key(bpmdef, y) for y in aux_bit2]
@@ -185,7 +183,43 @@ def joint_mask(bpm_msk, box_msk, flag='BPMDEF_SUSPECT'):
         #
         # Superpose masks, do not duplicating the flag
         #
-        stack(bpm, box_msk, flag)
+        # Use delimiters to go section by section of the CCD
+        mold = np.zeros_like(bpm)
+        coo = []
+        for [x1, y1, x2, y2] in box_msk:
+            section = bpm[y1:y2 , x1:x2]
+            # Inside the section, look for each of the bits and its
+            # correspondence in the pixels. If the bit contains
+            for idx, unib in enumerate(aux_bit1):
+                aux_section = section[np.where(section == unib)]
+                if (aux_section.size == 0):
+                    continue
+                # Get the composing bits for the value. Check if the value
+                # we want to assign is already on the components of the pixel
+                # mask
+                bit_n = aux_bit2_decomp[idx]
+                if (bpmdef[flag] in bit_n):
+                    continue
+                # Put the value on the mold, adding the flag BPMDEF value
+                #
+                # Fix this!!! only need to replace certain pixels,
+                # the ones in section[np.where(section == unib)]
+                mold[y1:y2 , x1:x2] = unib + bpmdef[flag]
+                #
+                #
+        # Copy the mold information into the BPM
+        new_bpm = np.copy(bpm)
+        new_bpm[np.where(mold != 0)] = mold[np.where(mold != 0)]
+
+
+        print('Continue Here!!')
+
+        plt.imshow(new_bpm, origin='lower', cmap='Set2')
+        plt.colorbar()
+        plt.show()
+        exit()
+
+
         #
         if False:
             # Plot mask, showing in colormap the number of bits per pixel
@@ -216,7 +250,7 @@ if __name__ == '__main__':
     h2 = 'Space-sepatared file with 2 vertices (bottom-left and top-right) per'
     h2 += ' box, to be be included in the BPM masking. Format should be: x_ini'
     h2 += ' y_ini x_end y_end'
-    tmp_add = 'vertices_op1.txt'
+    tmp_add = 'vertices_op3.txt'
     abc.add_argument('--tab', help=h2, default=tmp_add)
     h3 = 'How many lines skip at the top of the space-separated file defining'
     h3 += ' the boxes. Default: 1'
