@@ -88,8 +88,8 @@ def open_txt(fnm, Nskip):
     # array with one more dimension, to harbor the columns. Below array has
     # shape (N,) but if no names are inputs, the shape would be (N, 4)
     m_kw = {
-        'names' : ('x1', 'y1', 'x2', 'y2'),
-        'formats' : ('i4', 'i4', 'i4', 'i4'),
+        'names' : ('x1', 'y1', 'x2', 'y2', 'flag'),
+        'formats' : ('i4', 'i4', 'i4', 'i4', '|S50'),
     }
     m = np.loadtxt(fnm, dtype=m_kw, comments='#',
                    converters=None, skiprows=Nskip, usecols=None,
@@ -157,12 +157,11 @@ def bit_decompose(int_x):
         i <<= 1
     return base2
 
-def bit_superpose(box_i_msk,
+def bit_superpose(box_i,
                   bpm=None,
                   aux_bit1=None,
                   aux_bit2_decomp=None,
                   non_masked_val=None,
-                  flag=None,
                   mask_unmasked=None):
     ''' Function to stack bits. Intended to be parallelized inside joint_mask()
     This function works in one box at a time, one flag at a time. The only
@@ -171,8 +170,7 @@ def bit_superpose(box_i_msk,
     - mask_box: a mask of the same dimensions as the input BPM array. The only
     unmasked values are the one inside the current box
     '''
-    [x1, y1, x2, y2] = box_i_msk
-    logging.info('Working in box: {0}'.format([x1, y1, x2, y2]))
+    logging.info('Working in box: {0}'.format(box_i))
     # Mask all numerical values, then unmask only the pixels on which to work
     # This works: mask_box = np.ma.masked_where(bpm is not np.nan, bpm)
     mask_box = np.ma.array(np.copy(bpm), mask=True)
@@ -180,7 +178,9 @@ def bit_superpose(box_i_msk,
         logging.warning('The masking of all pixels failed')
     # Unmask the box region to operate on it.
     # NOTE: np.ma.nomask assign zeros instead of recover original data
-    mask_box[y1:y2 , x1:x2] = mask_box[y1:y2 , x1:x2].data
+    mask_box[box_i['y1']:box_i['y2'] ,
+             box_i['x1']:box_i['x2']] = mask_box[box_i['y1']:box_i['y2'] ,
+                                                 box_i['x1']:box_i['x2']].data
     # Inside the unmasked section, look for each of the bits and its
     # correspondence in the pixels.
     # Add non-masked values to the equation
@@ -197,16 +197,16 @@ def bit_superpose(box_i_msk,
             unique_bit_comp = aux_bit2_decomp[idx]
             # Control flow, if value is already in the bit decomposition
             # Check for non-masked values also
-            if (bpmdef[flag] in unique_bit_comp):
+            if (bpmdef[box_i['flag']] in unique_bit_comp):
                 continue
             # Add the flag to the entire unmasked region
-            mask_bitx += bpmdef[flag]
+            mask_bitx += bpmdef[box_i['flag']]
             # The values from mask_bitx must go to mask_box. Then the
             # values from mask_box must go to the BPM array
             mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
         elif (unib == non_masked_val) and (mask_unmasked):
             # Here we take care of the non-masked pixels
-            mask_bitx += bpmdef[flag]
+            mask_bitx += bpmdef[box_i['flag']]
             # The values from mask_bitx must go to mask_box. Then the
             # values from mask_box must go to the BPM array
             mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
@@ -216,7 +216,6 @@ def joint_mask(bpm,
                box_msk,
                non_masked_val=0,
                mask_unmasked=True,
-               flag='BPMDEF_SUSPECT',
                Nproc=None):
     ''' Applies the box-defined mask to the original BPM, avoiding replace
     bits values. The flag need to have an entry in BPMDEF.
@@ -224,12 +223,11 @@ def joint_mask(bpm,
     To be used: ['BPMDEF_SUSPECT', 'BPMDEF_NEAREDGE']
     Inputs
     - bpm: BPM mask array
-    - box_msk: list of corner-coordinates (left-bottom, right-top) for the
-    different boxes
+    - box_msk: numpy structured array corner-coordinates (left-bottom,
+    right-top) for the different boxes
     - non_masked_val: value for the non-masked pixels
     - mask_unmasked: whether to mask unmasked pixels. If False then only add
     the flag value to the already masked pixels
-    - flag: flag of the BPMDEF to be used for the set of boxes
     - Nproc: number of processes to be run in parallel for the bit comparison,
     one per box
     '''
@@ -269,7 +267,6 @@ def joint_mask(bpm,
         'aux_bit1' : aux_bit1,
         'aux_bit2_decomp' : aux_bit2_decomp,
         'non_masked_val' : non_masked_val,
-        'flag' : flag,
         'mask_unmasked' : mask_unmasked,
     }
     t0 = time.time()
@@ -290,14 +287,15 @@ def joint_mask(bpm,
     # Replace values on the BPM array
     for i_box in mask_i_box:
         bpm_twin[~i_box.mask] = i_box[~i_box.mask]
+
     #
     # Diagnosis plot
     #
     # Stacked mask
     if True:
         plt.close('all')
-        fig = plt.figure(figsize=(4, 8))
-        ax0 = add_subplot(1, 1, 1)
+        fig = plt.figure(figsize=(5, 8))
+        ax0 = fig.add_subplot(1, 1, 1)
         cmap = plt.cm.tab20
         a = np.ma.masked_where(bpm_twin == 0, bpm_twin)
         cmap.set_bad(color='white')
@@ -332,8 +330,8 @@ if __name__ == '__main__':
     abc.add_argument('--bpm', help=h1, default=tmp_bpm)
     h2 = 'Space-sepatared file with 2 vertices (bottom-left and top-right) per'
     h2 += ' box, to be be included in the BPM masking. Format should be: x_ini'
-    h2 += ' y_ini x_end y_end'
-    tmp_add = 'vertices_op3.txt'
+    h2 += ' y_ini x_end y_end bpmdef_flag'
+    tmp_add = 'vert_flag_op3.txt'
     abc.add_argument('--tab', help=h2, default=tmp_add)
     h3 = 'How many lines skip at the top of the space-separated file defining'
     h3 += ' the boxes. Default: 1'
