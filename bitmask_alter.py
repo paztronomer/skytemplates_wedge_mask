@@ -152,7 +152,7 @@ def bit_decompose(int_x):
         i <<= 1
     return base2
 
-def joint_mask(bpm_msk, box_msk,
+def joint_mask(bpm, box_msk,
                non_masked_val=0,
                mask_unmasked=True,
                flag='BPMDEF_SUSPECT'):
@@ -161,164 +161,164 @@ def joint_mask(bpm_msk, box_msk,
     To be used:
     ['BPMDEF_SUSPECT', 'BPMDEF_NEAREDGE']
     '''
-    for bpm in bpm_msk:
-        bpm_twin = np.copy(bpm)
-        #
-        # Check the bits
-        #
-        # Unique bits in the mask not considering the zeros
-        # Transform to tuple for protection
-        aux_bit1 = np.unique(bpm[np.where(bpm != non_masked_val)].ravel())
-        aux_bit1 = tuple(aux_bit1)
-        if (not len(aux_bit1)):
-            logging.warning('No masking was detected (values != 0)')
-            continue
-        # Unique base-2 bits, obtained from decomposing the above
-        aux_bit2_decomp = tuple(map(bit_decompose, aux_bit1))
-        aux_bit2_count = [len(x) for x in aux_bit2_decomp]
-        aux_bit2 = flatten_list(aux_bit2_decomp)
-        aux_bit2 = np.unique(aux_bit2)
-        # Check if these bits are in the dictionary of BPMDEF
-        aux_xm_key = [get_dict_key(bpmdef, y) for y in aux_bit2]
-        # If the list contains None, then some of the values weren't found
-        if aux_xm_key.count(None):
-            logging.warning('Some values in the mask are not defined in BPMDEF')
-            aux_xm_key = [x for x in aux_xm_key if x is not None]
-        # Flatten the list
-        aux_xm_key = flatten_list(aux_xm_key)
-        logging.info('Found keys from BPMDEF: {0}'.format(aux_xm_key))
-        #
-        # Superpose masks, do not duplicating the flag
-        #
-        # Use delimiters to go box by box
-        for [x1, y1, x2, y2] in box_msk:
-            gc.collect()
-            print('box: ', [x1, y1, x2, y2])
-            # Mask all numerical values.
-            # This works: mask_box = np.ma.masked_where(bpm is not np.nan, bpm)
-            mask_box = np.ma.array(np.copy(bpm), mask=True)
-            print((mask_box.all() is np.ma.masked))
-            # Unmask the box region to operate on it.
-            # NOTE: np.ma.nomask assign zeros
-            mask_box[y1:y2 , x1:x2] = mask_box[y1:y2 , x1:x2].data
-            # Inside the unmasked section, look for each of the bits and its
-            # correspondence in the pixels.
-            # Add non-masked values to the equation
-            for idx, unib in enumerate(list(aux_bit1) + [non_masked_val]):
-                # Copy the mask of the box, and operate on the unique bits
-                mask_bitx = np.ma.masked_where(mask_box != unib, mask_box,
-                                               copy=True)
-                # Control flow , if there are not non-masked values
-                if (np.ma.count(mask_bitx) == 0):
-                    continue
-                if (unib != 0):
-                    # Get the composing bits for the value, and check if the number
-                    # we want to assign is already on the components of the pixel
-                    # bad pixel mask
-                    unique_bit_comp = aux_bit2_decomp[idx]
-                    # Control flow, if value is already in the bit decomposition
-                    # Check for non-masked values also
-                    if (bpmdef[flag] in unique_bit_comp):
-                        continue
-
-                    # mask_bitx seems to be ok
-                    # print mask_bitx[~mask_bitx.mask][:5], mask_bitx[~mask_bitx.mask].shape
-
-                    # Adding values seems to work too
-                    mask_bitx += bpmdef[flag]
-                    #print mask_bitx[~mask_bitx.mask][:5], mask_bitx[~mask_bitx.mask].shape
-
-                    # The values from mask_bitx must go to mask_box. Then the
-                    # values from mask_box must go to the BPM array
-                    mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
-                    # print mask_box[~mask_bitx.mask][:5], mask_box[~mask_bitx.mask].shape
-
-                elif (unib == non_masked_val) and (mask_unmasked):
-                    # Here we take care of the non-masked pixels
-                    print 'non-masked (zero)'
-                    # Adding values seems to work too
-                    mask_bitx += bpmdef[flag]
-                    # The values from mask_bitx must go to mask_box. Then the
-                    # values from mask_box must go to the BPM array
-                    mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
-            # Replace values on the BPM array
-            bpm_twin[~mask_box.mask] = mask_box[~mask_box.mask]
-
-
-
-            
-
-        cmap = plt.cm.tab20
-        a = np.ma.masked_where(bpm_twin == 0, bpm_twin)
-        cmap.set_bad(color='white')
-        plt.imshow(a, cmap='tab20', origin='lower', vmin=256)
-        plt.colorbar()
-        plt.show()
-        exit()
-
-
-
-        exit()
-        plt.imshow(mask_bitx, cmap='tab20', origin='lower')
-        plt.colorbar()
-        plt.show()
-        print mask_bitx.shape, mask_box.shape
-        exit()
-
-        plt.imshow(mask_tmp01, cmap='tab20', origin='lower')
-        plt.colorbar()
-        plt.show()
-        exit()
-
-        plt.imshow(mold, origin='lower', cmap='Set2')
-        plt.colorbar()
-        plt.show()
-        exit()
-        # Copy the mold information into the BPM
-        new_bpm = np.copy(bpm)
-        new_bpm[np.where(mold != 0)] = mold[np.where(mold != 0)]
-
-
-        print('Continue Here!!')
-
-        plt.imshow(new_bpm, origin='lower', cmap='Set2')
-        plt.colorbar()
-        plt.show()
-        exit()
-
-        '''
-        FOR SAFETY, PRESERVE FOLLOWING LINES UNTIL ALL IS SETTLED
-        for [x1, y1, x2, y2] in box_msk:
-            print('box: ', [x1, y1, x2, y2])
-            section = bpm[y1:y2 , x1:x2]
-            # Inside the section, look for each of the bits and its
-            # correspondence in the pixels. If the bit contains
-            for idx, unib in enumerate(aux_bit1):
-                bit_section = section[np.where(section == unib)]
-                if (bit_section.size == 0):
-                    continue
-                # Get the composing bits for the value. Check if the value
+    # Auxiliary array
+    bpm_twin = np.copy(bpm)
+    #
+    # Check the bits
+    #
+    # Unique bits in the mask not considering the zeros
+    # Transform to tuple for protection
+    aux_bit1 = np.unique(bpm[np.where(bpm != non_masked_val)].ravel())
+    aux_bit1 = tuple(aux_bit1)
+    if (not len(aux_bit1)):
+        logging.warning('No masking was detected (values != 0)')
+        continue
+    # Unique base-2 bits, obtained from decomposing the above
+    aux_bit2_decomp = tuple(map(bit_decompose, aux_bit1))
+    aux_bit2_count = [len(x) for x in aux_bit2_decomp]
+    aux_bit2 = flatten_list(aux_bit2_decomp)
+    aux_bit2 = np.unique(aux_bit2)
+    # Check if these bits are in the dictionary of BPMDEF
+    aux_xm_key = [get_dict_key(bpmdef, y) for y in aux_bit2]
+    # If the list contains None, then some of the values weren't found
+    if aux_xm_key.count(None):
+        logging.warning('Some values in the mask are not defined in BPMDEF')
+        aux_xm_key = [x for x in aux_xm_key if x is not None]
+    # Flatten the list
+    aux_xm_key = flatten_list(aux_xm_key)
+    logging.info('Found keys from BPMDEF: {0}'.format(aux_xm_key))
+    #
+    # Superpose masks, do not duplicating the flag
+    #
+    # Use delimiters to go box by box
+    for [x1, y1, x2, y2] in box_msk:
+        gc.collect()
+        print('box: ', [x1, y1, x2, y2])
+        # Mask all numerical values.
+        # This works: mask_box = np.ma.masked_where(bpm is not np.nan, bpm)
+        mask_box = np.ma.array(np.copy(bpm), mask=True)
+        print((mask_box.all() is np.ma.masked))
+        # Unmask the box region to operate on it.
+        # NOTE: np.ma.nomask assign zeros
+        mask_box[y1:y2 , x1:x2] = mask_box[y1:y2 , x1:x2].data
+        # Inside the unmasked section, look for each of the bits and its
+        # correspondence in the pixels.
+        # Add non-masked values to the equation
+        for idx, unib in enumerate(list(aux_bit1) + [non_masked_val]):
+            # Copy the mask of the box, and operate on the unique bits
+            mask_bitx = np.ma.masked_where(mask_box != unib, mask_box,
+                                           copy=True)
+            # Control flow , if there are not non-masked values
+            if (np.ma.count(mask_bitx) == 0):
+                continue
+            if (unib != 0):
+                # Get the composing bits for the value, and check if the number
                 # we want to assign is already on the components of the pixel
-                # mask
-                bit_n = aux_bit2_decomp[idx]
-                if (bpmdef[flag] in bit_n):
+                # bad pixel mask
+                unique_bit_comp = aux_bit2_decomp[idx]
+                # Control flow, if value is already in the bit decomposition
+                # Check for non-masked values also
+                if (bpmdef[flag] in unique_bit_comp):
                     continue
-        '''
+
+                # mask_bitx seems to be ok
+                # print mask_bitx[~mask_bitx.mask][:5], mask_bitx[~mask_bitx.mask].shape
+
+                # Adding values seems to work too
+                mask_bitx += bpmdef[flag]
+                #print mask_bitx[~mask_bitx.mask][:5], mask_bitx[~mask_bitx.mask].shape
+
+                # The values from mask_bitx must go to mask_box. Then the
+                # values from mask_box must go to the BPM array
+                mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
+                # print mask_box[~mask_bitx.mask][:5], mask_box[~mask_bitx.mask].shape
+
+            elif (unib == non_masked_val) and (mask_unmasked):
+                # Here we take care of the non-masked pixels
+                print 'non-masked (zero)'
+                # Adding values seems to work too
+                mask_bitx += bpmdef[flag]
+                # The values from mask_bitx must go to mask_box. Then the
+                # values from mask_box must go to the BPM array
+                mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
+        # Replace values on the BPM array
+        bpm_twin[~mask_box.mask] = mask_box[~mask_box.mask]
 
 
-        #
-        if False:
-            # Plot mask, showing in colormap the number of bits per pixel
-            aux_bpm = np.copy(bpm)
-            for ind, item in enumerate(aux_bit1):
-                aux_bpm[np.where(aux_bpm == item)] = aux_bit2_count[ind]
-            plt.close('all')
-            fig = plt.figure(figsize=(4, 8))
-            ax = fig.add_subplot(1, 1, 1)
-            im = ax.imshow(aux_bpm, origin='lower', cmap='viridis_r')
-            plt.colorbar(im)
-            plt.show()
-            del aux_bpm
+
+
+
+    cmap = plt.cm.tab20
+    a = np.ma.masked_where(bpm_twin == 0, bpm_twin)
+    cmap.set_bad(color='white')
+    plt.imshow(a, cmap='tab20', origin='lower', vmin=256)
+    plt.colorbar()
+    plt.show()
+    exit()
+
+
+
+    exit()
+    plt.imshow(mask_bitx, cmap='tab20', origin='lower')
+    plt.colorbar()
+    plt.show()
+    print mask_bitx.shape, mask_box.shape
+    exit()
+
+    plt.imshow(mask_tmp01, cmap='tab20', origin='lower')
+    plt.colorbar()
+    plt.show()
+    exit()
+
+    plt.imshow(mold, origin='lower', cmap='Set2')
+    plt.colorbar()
+    plt.show()
+    exit()
+    # Copy the mold information into the BPM
+    new_bpm = np.copy(bpm)
+    new_bpm[np.where(mold != 0)] = mold[np.where(mold != 0)]
+
+
+    print('Continue Here!!')
+
+    plt.imshow(new_bpm, origin='lower', cmap='Set2')
+    plt.colorbar()
+    plt.show()
+    exit()
+
+    '''
+    FOR SAFETY, PRESERVE FOLLOWING LINES UNTIL ALL IS SETTLED
+    for [x1, y1, x2, y2] in box_msk:
+        print('box: ', [x1, y1, x2, y2])
+        section = bpm[y1:y2 , x1:x2]
+        # Inside the section, look for each of the bits and its
+        # correspondence in the pixels. If the bit contains
+        for idx, unib in enumerate(aux_bit1):
+            bit_section = section[np.where(section == unib)]
+            if (bit_section.size == 0):
+                continue
+            # Get the composing bits for the value. Check if the value
+            # we want to assign is already on the components of the pixel
+            # mask
+            bit_n = aux_bit2_decomp[idx]
+            if (bpmdef[flag] in bit_n):
+                continue
+    '''
+
+
+    #
+    if False:
+        # Plot mask, showing in colormap the number of bits per pixel
+        aux_bpm = np.copy(bpm)
+        for ind, item in enumerate(aux_bit1):
+            aux_bpm[np.where(aux_bpm == item)] = aux_bit2_count[ind]
+        plt.close('all')
+        fig = plt.figure(figsize=(4, 8))
+        ax = fig.add_subplot(1, 1, 1)
+        im = ax.imshow(aux_bpm, origin='lower', cmap='viridis_r')
+        plt.colorbar(im)
+        plt.show()
+        del aux_bpm
 
 
 
@@ -347,7 +347,10 @@ if __name__ == '__main__':
     aux_pca = open_fits(abc.image)
     aux_bpm = open_fits(abc.bpm)
     aux_tab = open_txt(abc.tab, abc.skip)
-
-    aux_mask = joint_mask(aux_bpm, aux_tab)
+    # We expect one extension.
+    if (len(aux_bpm) != 1):
+        logging.error('This code is implemented to update one-extension only')
+        exit(1)
+    aux_mask = joint_mask(aux_bpm[0], aux_tab)
 
     # print(bpmdef.keys(), bpmdef.values())
