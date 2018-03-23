@@ -165,25 +165,29 @@ def bit_superpose(box_i_msk,
                   flag=None,
                   mask_unmasked=None):
     ''' Function to stack bits. Intended to be parallelized inside joint_mask()
-    This function works in one box at a time, one flag at a time
+    This function works in one box at a time, one flag at a time. The only
+    variable that iterates is the box_i_msk
+    Returns
+    - mask_box: a mask of the same dimensions as the input BPM array. The only
+    unmasked values are the one inside the current box
     '''
     [x1, y1, x2, y2] = box_i_msk
-    print('box: ', [x1, y1, x2, y2])
-    # Mask all numerical values.
+    logging.info('Working in box: {0}'.format([x1, y1, x2, y2]))
+    # Mask all numerical values, then unmask only the pixels on which to work
     # This works: mask_box = np.ma.masked_where(bpm is not np.nan, bpm)
     mask_box = np.ma.array(np.copy(bpm), mask=True)
-    print((mask_box.all() is np.ma.masked))
+    if (mask_box.all() is not np.ma.masked):
+        logging.warning('The masking of all pixels failed')
     # Unmask the box region to operate on it.
-    # NOTE: np.ma.nomask assign zeros
+    # NOTE: np.ma.nomask assign zeros instead of recover original data
     mask_box[y1:y2 , x1:x2] = mask_box[y1:y2 , x1:x2].data
     # Inside the unmasked section, look for each of the bits and its
     # correspondence in the pixels.
     # Add non-masked values to the equation
     for idx, unib in enumerate(list(aux_bit1) + [non_masked_val]):
         # Copy the mask of the box, and operate on the unique bits
-        mask_bitx = np.ma.masked_where(mask_box != unib, mask_box,
-                                       copy=True)
-        # Control flow , if there are not non-masked values
+        mask_bitx = np.ma.masked_where(mask_box != unib, mask_box, copy=True)
+        # Control flow, if there are not non-masked values
         if (np.ma.count(mask_bitx) == 0):
             continue
         if (unib != 0):
@@ -195,30 +199,21 @@ def bit_superpose(box_i_msk,
             # Check for non-masked values also
             if (bpmdef[flag] in unique_bit_comp):
                 continue
-
-            # mask_bitx seems to be ok
-            # print mask_bitx[~mask_bitx.mask][:5], mask_bitx[~mask_bitx.mask].shape
-
-            # Adding values seems to work too
+            # Add the flag to the entire unmasked region
             mask_bitx += bpmdef[flag]
-            #print mask_bitx[~mask_bitx.mask][:5], mask_bitx[~mask_bitx.mask].shape
-
             # The values from mask_bitx must go to mask_box. Then the
             # values from mask_box must go to the BPM array
             mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
-            # print mask_box[~mask_bitx.mask][:5], mask_box[~mask_bitx.mask].shape
-
         elif (unib == non_masked_val) and (mask_unmasked):
             # Here we take care of the non-masked pixels
-            print 'non-masked (zero)'
-            # Adding values seems to work too
             mask_bitx += bpmdef[flag]
             # The values from mask_bitx must go to mask_box. Then the
             # values from mask_box must go to the BPM array
             mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
     return mask_box
 
-def joint_mask(bpm, box_msk,
+def joint_mask(bpm,
+               box_msk,
                non_masked_val=0,
                mask_unmasked=True,
                flag='BPMDEF_SUSPECT',
@@ -228,7 +223,15 @@ def joint_mask(bpm, box_msk,
     The bit comparison is carried out in parallel, one process per box.
     To be used: ['BPMDEF_SUSPECT', 'BPMDEF_NEAREDGE']
     Inputs
-    - 
+    - bpm: BPM mask array
+    - box_msk: list of corner-coordinates (left-bottom, right-top) for the
+    different boxes
+    - non_masked_val: value for the non-masked pixels
+    - mask_unmasked: whether to mask unmasked pixels. If False then only add
+    the flag value to the already masked pixels
+    - flag: flag of the BPMDEF to be used for the set of boxes
+    - Nproc: number of processes to be run in parallel for the bit comparison,
+    one per box
     '''
     # Check the bits
     #
@@ -240,7 +243,7 @@ def joint_mask(bpm, box_msk,
         logging.warning('No masking was detected (values != 0)')
         return False
         # continue
-    # Unique base-2 bits, obtained from decomposing the above
+    # Decomposing the above, in base-2 bits
     aux_bit2_decomp = tuple(map(bit_decompose, aux_bit1))
     aux_bit2_count = [len(x) for x in aux_bit2_decomp]
     aux_bit2 = flatten_list(aux_bit2_decomp)
@@ -251,15 +254,15 @@ def joint_mask(bpm, box_msk,
     if aux_xm_key.count(None):
         logging.warning('Some values in the mask are not defined in BPMDEF')
         aux_xm_key = [x for x in aux_xm_key if x is not None]
-    # Flatten the list
+    # Flatten the list, because it is composed by lists inside the larger list
     aux_xm_key = flatten_list(aux_xm_key)
     logging.info('Found keys from BPMDEF: {0}'.format(aux_xm_key))
     #
-    # Superpose masks, do not duplicating the flag
-    # Auxiliary array
+    # Superpose masks, do not duplicate the flag, if already in the bits
+    # composing the pixel mask value
+    #
     bpm_twin = np.copy(bpm)
-    #Use delimiters to go box by box
-    # ===============================
+    # ====Run in parallel====
     # For Python 3+ the map can be applied in a easier way
     kw_super = {
         'bpm' : bpm,
@@ -273,13 +276,17 @@ def joint_mask(bpm, box_msk,
     if (Nproc is None):
         Nproc = len(box_msk)
     P1 = mp.Pool(processes=Nproc)
+    # Using the partial() method define an auxiliary function with the fixed
+    # values. Then, in the map the iterating value will be provided
     part_bit_superpose = partial(bit_superpose, **kw_super)
-    # The map blocks until the result is ready
+    # The map blocks until the result is ready. If want to use apply_async()
+    # or other method, processes could be freed when ends, without wait for
+    # the others
     mask_i_box = P1.map(part_bit_superpose, box_msk)
     t1 =  time.time()
     txt_time = 'Time in comparing bits: {0:.2f} min'.format((t1 - t0) / 60.)
     logging.info(txt_time)
-    # ===============================
+    # =======================
     # Replace values on the BPM array
     for i_box in mask_i_box:
         bpm_twin[~i_box.mask] = i_box[~i_box.mask]
@@ -310,25 +317,6 @@ def joint_mask(bpm, box_msk,
         plt.colorbar(im)
         plt.show()
         del aux_bpm
-
-    '''
-    FOR SAFETY, PRESERVE FOLLOWING LINES UNTIL ALL IS SETTLED
-    for [x1, y1, x2, y2] in box_msk:
-        print('box: ', [x1, y1, x2, y2])
-        section = bpm[y1:y2 , x1:x2]
-        # Inside the section, look for each of the bits and its
-        # correspondence in the pixels. If the bit contains
-        for idx, unib in enumerate(aux_bit1):
-            bit_section = section[np.where(section == unib)]
-            if (bit_section.size == 0):
-                continue
-            # Get the composing bits for the value. Check if the value
-            # we want to assign is already on the components of the pixel
-            # mask
-            bit_n = aux_bit2_decomp[idx]
-            if (bpmdef[flag] in bit_n):
-                continue
-    '''
 
 
 if __name__ == '__main__':
