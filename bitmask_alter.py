@@ -273,11 +273,6 @@ def joint_mask(bpm,
     #
     bpm_twin = np.copy(bpm)
     # ====Run in parallel====
-
-    # WARNING: test with only 1 mbox
-    logging.warning('TEST WITH ONLY ONE BOX')
-    box_msk = box_msk[0]
-
     # For Python 3+ the map can be applied in a easier way
     kw_super = {
         'bpm' : bpm,
@@ -295,7 +290,7 @@ def joint_mask(bpm,
         t1 =  time.time()
         txt_time = 'Time in comparing bits: {0:.2f} min'.format((t1 - t0) / 60.)
         logging.info(txt_time)
-    elif (box_mask.size > 1):
+    elif (box_msk.size > 1):
         t0 = time.time()
         if (Nproc is None):
             Nproc = len(box_msk)
@@ -414,15 +409,15 @@ if __name__ == '__main__':
     desc_txt += ' bpmdef_flag). NOTE: it add the bits to the mask'
     abc = argparse.ArgumentParser(description=desc_txt)
     h0 = 'Image to be loaded, to check the masking'
-    tmp_pca = 'Y4A1_20160801t1215_g_c03_r2930p01_skypca-tmpl.fits'
-    abc.add_argument('--image', help=h0, default=tmp_pca)
-    h1 = 'BPM FITS file'
+    abc.add_argument('--image', help=h0)
     tmp_bpm = 'D_n20170815t0824_c03_r3370p01_bpm.fits'
+    h1 = 'BPM FITS file. Default: {0}'.format(tmp_bpm)
     abc.add_argument('--bpm', help=h1, default=tmp_bpm)
+    tmp_add = 'vert_flag_op3.txt'
     h2 = 'Space-separated file with 2 vertices (bottom-left and top-right) per'
     h2 += ' box and its BPMDEF flag, to be be included in the BPM masking.'
     h2 += ' Format should be: x_ini y_ini x_end y_end bpmdef_flag'
-    tmp_add = 'vert_flag_op3.txt'
+    h2 += ' Default: {0}'.format(tmp_add)
     abc.add_argument('--tab', help=h2, default=tmp_add)
     h3 = 'How many lines skip at the top of the space-separated file defining'
     h3 += ' the boxes. Default: 1'
