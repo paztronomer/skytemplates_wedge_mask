@@ -1,6 +1,5 @@
 # skytemplates_wedge_mask
-## Codes for visualize and assess the anomaly. Code for apply an additional
-## bitmask to the BPM
+## Codes for visualize and assess the anomaly. Code for apply an additional bitmask to the BPM
 
 *To mask the CCD3 wedge, shown in skytemplates (time range when CCD2 is dead)*
 
@@ -47,3 +46,13 @@ x1 y1 x2 y2 bpmdef
 
 And a typical call of `bitmask_alter.py` would be
 `python bitmask_alter.py --bpm {BPM.fits} --tab {table.txt}` 
+
+*It is important to note that the wedge has some dependence with the 
+wavelenght. Therefore, one mask per band must be constructed*
+
+### Images for testing the updated mask
+As this *wedge* appears when CCD02 was dead and CCD03 alive, we need to test 
+the mask. As the mask is constructed from the analysis of the skytemplates, 
+the testing should be done on a stacked image, for different bands, on the
+same time period.
+
