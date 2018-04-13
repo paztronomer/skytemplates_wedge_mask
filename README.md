@@ -1,6 +1,5 @@
 # skytemplates_wedge_mask
-## Codes for visualize and assess the anomaly. Code for apply an additional
-## bitmask to the BPM
+## Codes for visualize and assess the anomaly. Code for apply an additional bitmask to the BPM
 
 *To mask the CCD3 wedge, shown in skytemplates (time range when CCD2 is dead)*
 
