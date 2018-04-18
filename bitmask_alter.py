@@ -189,6 +189,10 @@ def bit_superpose(box_i,
     # Inside the unmasked section, look for each of the bits and its
     # correspondence in the pixels.
     # Add non-masked values to the equation
+    if (box_i.size == 1): 
+        box_i_flag = str(box_i['flag'])
+    else:
+        box_i_flag = box_i['flag']
     for idx, unib in enumerate(list(aux_bit1) + [non_masked_val]):
         # Copy the mask of the box, and operate on the unique bits
         mask_bitx = np.ma.masked_where(mask_box != unib, mask_box, copy=True)
@@ -202,16 +206,20 @@ def bit_superpose(box_i,
             unique_bit_comp = aux_bit2_decomp[idx]
             # Control flow, if value is already in the bit decomposition
             # Check for non-masked values also
-            if (bpmdef[box_i['flag']] in unique_bit_comp):
+            if (bpmdef[box_i_flag] in unique_bit_comp):
                 continue
+            #
+            # Here an error was raised and solved with str()
+            # monitor this section for further
+            #
             # Add the flag to the entire unmasked region
-            mask_bitx += bpmdef[box_i['flag']]
+            mask_bitx += bpmdef[box_i_flag]
             # The values from mask_bitx must go to mask_box. Then the
             # values from mask_box must go to the BPM array
             mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
         elif (unib == non_masked_val) and (mask_unmasked):
             # Here we take care of the non-masked pixels
-            mask_bitx += bpmdef[box_i['flag']]
+            mask_bitx += bpmdef[box_i_flag]
             # The values from mask_bitx must go to mask_box. Then the
             # values from mask_box must go to the BPM array
             mask_box[~mask_bitx.mask] = mask_bitx[~mask_bitx.mask]
@@ -226,7 +234,8 @@ def joint_mask(bpm,
                Nproc=None,
                out_dtype='uint16',
                file_check=False,
-               out_fname=None,):
+               out_fname=None,
+               checksum=False,):
     ''' Applies the box-defined mask to the original BPM, avoiding replace
     bits values. The flag need to have an entry in BPMDEF.
     The bit comparison is carried out in parallel, one process per box.
@@ -367,7 +376,8 @@ def joint_mask(bpm,
     ]
     fits[0].write_keys(hlist)
     # Write checksum
-    fits[0].write_checksum()
+    if checksum:
+        fits[0].write_checksum()
     # Close FITS
     fits.close()
     logging.info('Modified BPM saved as {0}'.format(out_fname))
@@ -408,7 +418,7 @@ if __name__ == '__main__':
     desc_txt += ' The input table must contain rows as (x1, y1, x2, y2,'
     desc_txt += ' bpmdef_flag). NOTE: it add the bits to the mask'
     abc = argparse.ArgumentParser(description=desc_txt)
-    h0 = 'Image to be loaded, to check the masking'
+    h0 = '<NOT YET IMPLEMENTED> Image to be loaded, to check the masking'
     abc.add_argument('--image', help=h0)
     tmp_bpm = 'D_n20170815t0824_c03_r3370p01_bpm.fits'
     h1 = 'BPM FITS file. Default: {0}'.format(tmp_bpm)
@@ -434,6 +444,8 @@ if __name__ == '__main__':
     abc.add_argument('--check', help=h7, action='store_true')
     h8 = 'Output filename. Default is bpm_modif_{filename of input BPM}.fits'
     abc.add_argument('--out', help=h8)
+    h9 = 'Flag to write checksums in FITS header. Default not to write them'
+    abc.add_argument('--csum', help=h9, action='store_true')
     # Variables
     abc = abc.parse_args()
     #
@@ -448,4 +460,4 @@ if __name__ == '__main__':
     aux_mask = joint_mask(aux_bpm[0], header_bpm[0], aux_tab, abc.bpm,
                           Nproc=abc.n1, non_masked_val=abc.val,
                           out_dtype=abc.dtype, file_check=abc.check,
-                          out_fname=abc.out)
+                          out_fname=abc.out, checksum=abc.csum)
