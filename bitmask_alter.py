@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 
 # BPM definitions
-# From imdetrend::mask_bits.h
+# From imsupport::mask_bits.h
 bpmdef = dict()
 bpmdef.update({'BPMDEF_FLAT_MIN' : 1})
 #Pixels that are hot in the flats.
